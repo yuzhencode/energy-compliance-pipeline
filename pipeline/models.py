@@ -90,9 +90,22 @@ class AccountDetailRow(BaseModel):
     account_status:              Literal["active", "disputed"]
     has_active_arrangement:      bool
     arrangement_date:            Optional[date]
-    arrangement_weekly_rate_gbp: Optional[float]
-    arrangement_plan_weeks:      Optional[int]
+    arrangement_weekly_rate_gbp: Optional[float] = None
+    arrangement_plan_weeks:      Optional[int]   = None
     last_switch_type:            Optional[str]
     last_switch_date:            Optional[date]
     last_switch_outcome:         Optional[str]
     report_date:                 date
+
+    @field_validator("arrangement_plan_weeks", "arrangement_weekly_rate_gbp", mode="before")
+    @classmethod
+    def nan_to_none(cls, v):
+        if v is None:
+            return None
+        try:
+            import math
+            if math.isnan(float(v)):
+                return None
+        except (TypeError, ValueError):
+            pass
+        return v

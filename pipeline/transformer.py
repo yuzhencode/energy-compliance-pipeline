@@ -42,6 +42,7 @@ class Transformer:
         logger.info("Transforming account detail into typed models")
         rows: List[AccountDetailRow] = []
         errors = 0
+        df = df.where(df.notna(), other=None)
         for _, row in df.iterrows():
             try:
                 rows.append(AccountDetailRow(**row.to_dict()))
