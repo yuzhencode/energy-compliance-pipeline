@@ -1,0 +1,38 @@
+version: 2
+
+models:
+  - name: stg_accounts
+    description: "Staged accounts — normalised, closed accounts excluded"
+    columns:
+      - name: account_id
+        description: "Unique account identifier"
+        tests:
+          - not_null
+          - unique
+      - name: fuel_type
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['gas', 'electric', 'dual']
+      - name: payment_method
+        tests:
+          - accepted_values:
+              values: ['direct_debit', 'prepayment_meter', 'cash', 'other']
+      - name: debt_amount_gbp
+        tests:
+          - not_null
+      - name: account_status
+        tests:
+          - accepted_values:
+              values: ['active', 'disputed']
+
+  - name: stg_debt_arrangements
+    description: "Active repayment arrangements, deduplicated by account"
+    columns:
+      - name: arrangement_id
+        tests:
+          - not_null
+          - unique
+      - name: account_id
+        tests:
+          - not_null

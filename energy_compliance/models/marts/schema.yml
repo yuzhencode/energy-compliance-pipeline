@@ -1,0 +1,33 @@
+version: 2
+
+models:
+  - name: ofgem_summary
+    description: >
+      Ofgem Social Obligations Reporting — quarterly summary metrics.
+      Maps directly to 6 published Ofgem indicators.
+      Ref: https://www.ofgem.gov.uk/data/debt-and-arrears-indicators
+    columns:
+      - name: accounts_with_debt
+        tests:
+          - not_null
+      - name: pct_repaying_via_ppm
+        tests:
+          - not_null
+      - name: report_date
+        tests:
+          - not_null
+
+  - name: account_detail
+    description: "Account-level detail for Ofgem submission"
+    columns:
+      - name: account_id
+        tests:
+          - not_null
+          - unique
+      - name: debt_amount_gbp
+        tests:
+          - not_null
+      - name: fuel_type
+        tests:
+          - accepted_values:
+              values: ['gas', 'electric', 'dual']

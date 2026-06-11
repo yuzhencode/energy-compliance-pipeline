@@ -1,0 +1,13 @@
+version: 2
+
+sources:
+  - name: raw
+    database: energy_compliance
+    schema: public
+    tables:
+      - name: accounts
+        description: "Raw customer account data"
+      - name: debt_repayment_arrangements
+        description: "Raw repayment arrangement records"
+      - name: remote_switch_events
+        description: "Raw remote switch event records"
