@@ -2,9 +2,8 @@
 
 Automated regulatory reporting pipeline for Ofgem compliance data.
 
-Built with Python, PostgreSQL, and AWS — inspired by real-world debt management
-reporting workflows in the UK energy sector. All data is synthetic, generated
-with [Faker](https://faker.readthedocs.io/).
+Built with Python, PostgreSQL, dbt, and AWS — inspired by real-world debt management
+reporting workflows in the UK energy sector. All data is synthetic, generated with [Faker](https://faker.readthedocs.io/).
 
 ---
 
@@ -14,11 +13,11 @@ with [Faker](https://faker.readthedocs.io/).
 ┌─────────────────────────────────────────────────────────────┐
 │  PostgreSQL                                                  │
 │  ┌──────────────┐  ┌──────────────────────────────────────┐ │
-│  │  Raw layer   │  │  SQL layer                           │ │
-│  │  accounts    │→ │  staging/stg_accounts.sql            │ │
-│  │  arrangements│  │  staging/stg_debt_arrangements.sql   │ │
-│  │  switches    │  │  marts/ofgem_summary.sql             │ │
-│  │  report_runs │  │  marts/account_detail.sql            │ │
+│  │  Raw layer   │  │  dbt layer                           │ │
+│  │  accounts    │→ │  staging/stg_accounts                │ │
+│  │  arrangements│  │  staging/stg_debt_arrangements       │ │
+│  │  switches    │  │  marts/ofgem_summary                 │ │
+│  │  report_runs │  │  marts/account_detail                │ │
 │  └──────────────┘  └──────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────┘
          │
@@ -40,8 +39,8 @@ with [Faker](https://faker.readthedocs.io/).
 | Layer | Location | Purpose |
 |-------|----------|---------|
 | **Raw** | `sql/schema.sql` | Source-faithful tables, no business logic |
-| **Staging** | `sql/staging/` | Normalise, cast types, derive flags |
-| **Mart** | `sql/marts/` | Aggregated, report-ready output |
+| **Staging** | `energy_compliance/models/staging/` | Normalise, cast types, derive flags |
+| **Mart** | `energy_compliance/models/marts/` | Aggregated, report-ready output |
 
 ---
 
@@ -74,7 +73,7 @@ Report fields map directly to published Ofgem indicators:
 | Phase | Status | Description |
 |-------|--------|-------------|
 | **1 — ETL pipeline** | ✅ Complete | Python + SQL, Pydantic models, Excel output, S3, CI/CD |
-| **2 — dbt quality layer** | 🔜 Planned | dbt models, tests, documentation |
+| **2 — dbt quality layer** | ✅ Complete | dbt models, 17 data quality tests, staging + mart layers |
 | **3 — RAG compliance assistant** | 🔜 Planned | LangChain + Ofgem docs Q&A |
 
 ---
@@ -84,29 +83,74 @@ Report fields map directly to published Ofgem indicators:
 ### Prerequisites
 - Python 3.12+
 - PostgreSQL 15+
+- dbt-core 1.8+ (`pip install dbt-postgres==1.8.2`)
 - AWS CLI configured (`aws configure`) — optional, for S3 upload
 
-### Setup
+### 1. Clone & install
 
 ```bash
-git clone https://github.com/<your-username>/energy-compliance-pipeline.git
+git clone https://github.com/yuzhencode/energy-compliance-pipeline.git
 cd energy-compliance-pipeline
-
 pip install -r requirements.txt
+```
 
+### 2. Configure environment
+
+```bash
 cp .env.example .env
 # Edit .env with your PostgreSQL credentials
+```
 
+### 3. Set up database
+
+```bash
 createdb energy_compliance
 psql energy_compliance -f sql/schema.sql
-
 python seeds/generate_seeds.py
+```
 
+### 4. Run dbt models and tests
+
+```bash
+cd energy_compliance
+dbt run      # builds staging views + mart tables
+dbt test     # runs 17 data quality tests
+cd ..
+```
+
+### 5. Run the pipeline
+
+```bash
 python run_pipeline.py --no-upload
 # Output: outputs/ofgem_report_YYYY-MM-DD.xlsx
+```
 
+### 6. Run Python tests
+
+```bash
 pytest tests/ -v
 ```
+
+---
+
+## dbt Data Quality Tests
+
+17 tests covering Ofgem reporting requirements:
+
+| Test | Model | Ofgem Relevance |
+|------|-------|----------------|
+| `unique` + `not_null` | `stg_accounts.account_id` | Account identifiability |
+| `accepted_values` | `stg_accounts.fuel_type` | Data standardisation |
+| `accepted_values` | `stg_accounts.payment_method` | Data standardisation |
+| `accepted_values` | `stg_accounts.account_status` | Valid status values |
+| `not_null` | `stg_accounts.debt_amount_gbp` | Debt amount completeness |
+| `unique` + `not_null` | `stg_debt_arrangements.arrangement_id` | Arrangement integrity |
+| `unique` + `not_null` | `account_detail.account_id` | No duplicate submissions |
+| `not_null` | `account_detail.debt_amount_gbp` | Debt completeness |
+| `accepted_values` | `account_detail.fuel_type` | Data standardisation |
+| `not_null` | `ofgem_summary.accounts_with_debt` | Core indicator completeness |
+| `not_null` | `ofgem_summary.pct_repaying_via_ppm` | PPM indicator completeness |
+| `not_null` | `ofgem_summary.report_date` | Submission date required |
 
 ---
 
@@ -137,6 +181,18 @@ On merge to `main`, a second deploy job runs the pipeline and uploads the report
 ```
 energy-compliance-pipeline/
 ├── .github/workflows/ci.yml
+├── energy_compliance/              # dbt project (Phase 2)
+│   ├── models/
+│   │   ├── staging/
+│   │   │   ├── sources.yml
+│   │   │   ├── schema.yml
+│   │   │   ├── stg_accounts.sql
+│   │   │   └── stg_debt_arrangements.sql
+│   │   └── marts/
+│   │       ├── schema.yml
+│   │       ├── ofgem_summary.sql   # 6 Ofgem quarterly indicators
+│   │       └── account_detail.sql
+│   └── dbt_project.yml
 ├── pipeline/
 │   ├── models.py       # Pydantic schema models (OOP data layer)
 │   ├── extractor.py    # SQL → DataFrame
@@ -145,12 +201,8 @@ energy-compliance-pipeline/
 │   └── reporter.py     # Excel generation + S3 upload
 ├── sql/
 │   ├── schema.sql              # Raw layer table definitions
-│   ├── staging/
-│   │   ├── stg_accounts.sql
-│   │   └── stg_debt_arrangements.sql
-│   └── marts/
-│       ├── ofgem_summary.sql   # 6 Ofgem quarterly indicators
-│       └── account_detail.sql
+│   ├── staging/                # Pre-dbt SQL (reference only)
+│   └── marts/                  # Pre-dbt SQL (reference only)
 ├── seeds/
 │   └── generate_seeds.py
 ├── tests/
@@ -162,4 +214,3 @@ energy-compliance-pipeline/
 ├── run_pipeline.py
 ├── requirements.txt
 └── .env.example
-```
